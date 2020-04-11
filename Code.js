@@ -1,18 +1,36 @@
-function OptionTest() {
-  return GetOptionQuote();
+function GetOptionQuote(underlying, optionType, strike, date, properties) {
+  Logger.log(properties);
+
+  const url = createURL("https://api.tdameritrade.com/v1/marketdata/chains",
+    {
+      "symbol": underlying,
+      "contractType": optionType.toUpperCase(),
+      "includeQuotes": "TRUE",
+      "strike": strike,
+      "fromDate": date.toISOString().split('T')[0],
+      "toDate": date.toISOString().split('T')[0]
+    });
+  Logger.log(url);
+  return ImportJSONOAuth(url,
+    json => parseOptionChain_(json, properties.flat()));
 }
 
-function GetOptionQuote(underlying, optionType, strike, date) {
-  return ImportJSONOAuth("https://api.tdameritrade.com/v1/marketdata/chains?symbol=TSLA&contractType=CALL&includeQuotes=TRUE&strike=820&fromDate=2021-01-15&toDate=2021-01-15",
-    json => parseOptionChain_(json, ["volatility", "delta", "gamma", "vega", "theta"]));
+function createURL(path, params) {
+  const ret = [];
+  for (let key in params)
+    ret.push(encodeURIComponent(key) + '=' + encodeURIComponent(params[key]));
+  return path + '?' + ret.join('&');
 }
 
 function parseOptionChain_(json, properties) {
   var table = [];
-  var callExpDateMap = json["callExpDateMap"];
-  for (var expiry in callExpDateMap) {
-    for (var strike in callExpDateMap[expiry]) {
-      for (var option of callExpDateMap[expiry][strike]) {
+  var map = json["callExpDateMap"];
+  if (Object.keys(map).length === 0) {
+    map = json["putExpDateMap"];
+  }
+  for (var expiry in map) {
+    for (var strike in map[expiry]) {
+      for (var option of map[expiry][strike]) {
         var row = [];
         for (var property of properties) {
           row.push(option[property]);
@@ -29,6 +47,7 @@ function ImportJSONOAuth(url, parser) {
   if (service.hasAccess()) {
     var header = { headers: { Authorization: "Bearer " + service.getAccessToken() } };
     var jsondata = UrlFetchApp.fetch(url, header);
+    Logger.log(jsondata.getContentText());
     var object = JSON.parse(jsondata.getContentText());
     return parser(object);
   } else {
