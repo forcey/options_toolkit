@@ -15,7 +15,12 @@ function getTDService() {
         .setClientSecret('N/A')  // TD doesn't require this but the OAuth library does.
         .setCallbackFunction('authCallback_')
         .setPropertyStore(PropertiesService.getUserProperties())
-        .setParam('access_type', 'offline');
+        .setTokenPayloadHandler(tokenPayloadHandler_);
+}
+
+function tokenPayloadHandler_(payload) {
+    payload['access_type'] = 'offline';
+    return payload;
 }
 
 /**
