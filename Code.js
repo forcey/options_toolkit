@@ -44,7 +44,13 @@ function parseOptionChain_(json, properties) {
 
 function ImportJSONOAuth(url, parser) {
   var service = getTDService();
-  if (service.hasAccess()) {
+
+  var loginMutex = LockService.getDocumentLock();
+  loginMutex.tryLock(5000);
+  const hasAccess = service.hasAccess();
+  loginMutex.releaseLock();
+
+  if (hasAccess) {
     var header = { headers: { Authorization: "Bearer " + service.getAccessToken() } };
     var jsondata = UrlFetchApp.fetch(url, header);
     Logger.log(jsondata.getContentText());
