@@ -1,0 +1,6 @@
+{
+  "timeZone": "Australia/Hobart",
+  "dependencies": {
+  },
+  "exceptionLogging": "STACKDRIVER"
+}
