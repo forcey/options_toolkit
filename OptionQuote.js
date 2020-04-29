@@ -51,7 +51,6 @@ function ImportJSONOAuth(url, parser) {
   if (hasAccess) {
     var header = { headers: { Authorization: "Bearer " + service.getAccessToken() } };
     var jsondata = UrlFetchApp.fetch(url, header);
-    Logger.log(jsondata.getContentText());
     var object = JSON.parse(jsondata.getContentText());
     return parser(object);
   } else {
