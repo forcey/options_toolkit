@@ -11,11 +11,17 @@ function LinearProgramming() {
 
     var engine = LinearOptimizationService.createEngine();
 
-    var lossConstraint = engine.addConstraint(-10000, 1e6)
-    var carryConstraint = engine.addConstraint(-1000, 1e6)
+    var costConstraint = engine.addConstraint(0, 10000)
+    var lossConstraint = engine.addConstraint(-6250, 1e6)
+    var carryConstraint = engine.addConstraint(-1250, 1e6)
     for (var row = 2; row <= 564; row++) {
         var cellName = "I" + row
         engine.addVariable(cellName, 0, 100, LinearOptimizationService.VariableType.INTEGER);
+
+        var asset = range.getCell(row, 1).getValue();
+        var multiplier = asset == "Stock" ? 1 : 100;
+
+        costConstraint.setCoefficient(cellName, range.getCell(row, 2).getValue() * multiplier);
         lossConstraint.setCoefficient(cellName, range.getCell(row, 6).getValue());
         carryConstraint.setCoefficient(cellName, range.getCell(row, 7).getValue());
         engine.setObjectiveCoefficient(cellName, range.getCell(row, 8).getValue());
