@@ -1,15 +1,22 @@
 // contracts: [
 //  {
-//   "name": "XYZ 1/21 100 Call"
-//   "underlying": "XYZ"
-//   "current": 123.0
-//   "low": 23.0
-//   "flat": 100.0
+//   "name": "XYZ 1/21 100 Call",
+//   "underlying": "XYZ",
+//   "current": 123.0,
+//   "low": 23.0,
+//   "flat": 100.0,
 //   "high": 300.0,
 //   "multiplier": 100,
 //  },
 //  {...}
 // ]
+// Returns: {
+//   positions: {0: 1, 1:10, 2:1, ...},
+//   cost: 12345.0,
+//   max_loss: -5000,
+//   carry_cost: -1000,
+//   max_gain: 20141.0,
+// }
 function LinearProgramming(contracts, maxCost, maxLoss, maxCarry) {
     var engine = LinearOptimizationService.createEngine();
 
@@ -33,14 +40,28 @@ function LinearProgramming(contracts, maxCost, maxLoss, maxCarry) {
     // Solve the linear program
     var solution = engine.solve();
     if (!solution.isValid()) {
-        Logger.log('No solution ' + solution.getStatus());
+        return { "error": solution.getStatus() };
     } else {
-        for (var contract of contracts) {
+        var result = {
+            "positions": {},
+            "cost": 0,
+            "max_loss": 0,
+            "carry_cost": 0,
+            "max_gain": solution.getObjectiveValue(),
+        }
+        for (var i = 0; i < contracts.length; i++) {
+            var contract = contracts[i];
+            var multiplier = "multiplier" in contract ? contract.multiplier : 1;
+
             var value = solution.getVariableValue(contract.name)
             if (value > 0) {
-                Logger.log(contract.name + ': ' + value);
+                result.positions[i] = value;
+                result.cost += value * contract.current * multiplier;
+                result.max_loss += value * (contract.low - contract.current) * multiplier;
+                result.carry_cost += value * (contract.flat - contract.current) * multiplier;
             }
         }
+        return result;
     }
 }
 
@@ -73,7 +94,6 @@ function toContracts_(json, targetDate, targetLow, targetHigh) {
         "low": targetLow,
         "flat": json.underlying.mark,
         "high": targetHigh,
-
     };
     var contracts = [underlying];
 
@@ -98,7 +118,11 @@ function toContracts_(json, targetDate, targetLow, targetHigh) {
 }
 
 function LinearProgrammingTest() {
-    var contracts = getOptionChain("GOOG", new Date(2020, 8, 1), 1500, 1000);
-    Logger.log(contracts);
-    LinearProgramming(contracts, 50000, -10000, -1000);
+    var googChain = getOptionChain("GOOG", new Date(2020, 12, 31), 1000, 1500);
+
+    var result = LinearProgramming(googChain, 350000, -150000, -35000);
+    Logger.log(result);
+    for (var i in result.positions) {
+        Logger.log(contracts[i].name + ": " + result.positions[i]);
+    }
 }
