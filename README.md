@@ -1,6 +1,15 @@
-# TD Options
+# Options Toolkit for Google Sheets
+
+## Black Scholes
+Custom functions for computing options price and greeks.
+
+## TD Options Quote
 Import Options data into Google Sheets from [TD Ameritrade API](https://developer.tdameritrade.com/apis).
 
+## Linear Programming
+In development.
+
+## Deployment
 To deploy, run `clasp push` from the command line.
 
 ## Dependencies:
