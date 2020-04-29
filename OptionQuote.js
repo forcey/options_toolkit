@@ -1,6 +1,4 @@
 function GetOptionQuote(underlying, optionType, strike, date, properties) {
-  Logger.log(properties);
-
   const url = createURL("https://api.tdameritrade.com/v1/marketdata/chains",
     {
       "symbol": underlying,

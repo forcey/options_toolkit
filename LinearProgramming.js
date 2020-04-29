@@ -1,30 +1,27 @@
-function LinearProgramming() {
-    var ss = SpreadsheetApp.getActiveSpreadsheet();
-    var sheet = ss.getSheets()[2];
-
-    var range = sheet.getRange("A1:H564");
-
-    // The row and column here are relative to the range
-    // getCell(1,1) in this code returns the cell at B2, B2
-    var cell = range.getCell(1, 1);
-    Logger.log(cell.getValue());
-
+// contracts: [
+//  {
+//   "name": "XYZ 1/21 100 Call"
+//   "underlying": "XYZ"
+//   "current": 123.0
+//   "lower": 23.0
+//   "flat": 100.0
+//   "upper": 300.0
+//  },
+//  {...}
+// ]
+function LinearProgramming(contracts, maxCost, maxLoss, maxCarry) {
     var engine = LinearOptimizationService.createEngine();
 
-    var costConstraint = engine.addConstraint(0, 10000)
-    var lossConstraint = engine.addConstraint(-6250, 1e6)
-    var carryConstraint = engine.addConstraint(-1250, 1e6)
-    for (var row = 2; row <= 564; row++) {
-        var cellName = "I" + row
-        engine.addVariable(cellName, 0, 100, LinearOptimizationService.VariableType.INTEGER);
+    var costConstraint = engine.addConstraint(0, maxCost)
+    var lossConstraint = engine.addConstraint(maxLoss, 0)
+    var carryConstraint = engine.addConstraint(maxCarry, 0)
+    for (var contract of contracts) {
+        engine.addVariable(contract.name, 0, 1e9, LinearOptimizationService.VariableType.INTEGER);
 
-        var asset = range.getCell(row, 1).getValue();
-        var multiplier = asset == "Stock" ? 1 : 100;
-
-        costConstraint.setCoefficient(cellName, range.getCell(row, 2).getValue() * multiplier);
-        lossConstraint.setCoefficient(cellName, range.getCell(row, 6).getValue());
-        carryConstraint.setCoefficient(cellName, range.getCell(row, 7).getValue());
-        engine.setObjectiveCoefficient(cellName, range.getCell(row, 8).getValue());
+        costConstraint.setCoefficient(contract.name, contract.current);
+        lossConstraint.setCoefficient(contract.name, contract.lower - contract.current);
+        carryConstraint.setCoefficient(contract.name, contract.flat - contract.current);
+        engine.setObjectiveCoefficient(contract.name, contract.upper - contract.current);
     }
 
     // Engine should maximize the objective
@@ -35,11 +32,31 @@ function LinearProgramming() {
     if (!solution.isValid()) {
         Logger.log('No solution ' + solution.getStatus());
     } else {
-        for (var row = 2; row <= 564; row++) {
-            var cellName = "I" + row
-            var value = solution.getVariableValue(cellName)
-            if (value > 0)
-                Logger.log(range.getCell(row, 1).getValue() + ': ' + solution.getVariableValue(cellName));
+        for (var contract of contracts) {
+            var value = solution.getVariableValue(contract.name)
+            if (value > 0) {
+                Logger.log(contract.name + ': ' + value);
+            }
         }
     }
+}
+
+function LinearProgrammingTest() {
+    var tsla = {
+        "name": "TSLA",
+        "underlying": "TSLA",
+        "current": 800,
+        "lower": 400,
+        "flat": 800,
+        "upper": 1500,
+    }
+    var tsla820 = {
+        "name": "TSLA 820 call",
+        "underlying": "TSLA",
+        "current": 18138,
+        "lower": 612,
+        "flat": 13667,
+        "upper": 70583,
+    }
+    LinearProgramming([tsla, tsla820], 250000, -160000, -10000);
 }
