@@ -20,6 +20,9 @@
 function LinearProgramming(contracts, maxCost, maxLoss, maxCarry) {
     var engine = LinearOptimizationService.createEngine();
 
+    // underlying -> cost constraint
+    var underlyingConstraints = {};
+
     var costConstraint = engine.addConstraint(0, maxCost)
     var lossConstraint = engine.addConstraint(maxLoss, 0)
     var carryConstraint = engine.addConstraint(maxCarry, 0)
@@ -32,6 +35,14 @@ function LinearProgramming(contracts, maxCost, maxLoss, maxCarry) {
         lossConstraint.setCoefficient(contract.name, (contract.low - contract.current) * multiplier);
         carryConstraint.setCoefficient(contract.name, (contract.flat - contract.current) * multiplier);
         engine.setObjectiveCoefficient(contract.name, (contract.high - contract.current) * multiplier);
+
+        if (!(contract.underlying in underlyingConstraints)) {
+            // Each underlying must occupy 5% - 50% of total portfolio.
+            underlyingConstraints[contract.underlying] = engine.addConstraint(0.05 * maxCost, 0.5 * maxCost);
+        }
+
+        var underlyingConstraint = underlyingConstraints[contract.underlying];
+        underlyingConstraint.setCoefficient(contract.name, contract.current * multiplier);
     }
 
     // Engine should maximize the objective
@@ -104,7 +115,7 @@ function toContracts_(json, targetDate, targetLow, targetHigh) {
                 var contract = {
                     "name": option.description,
                     "underlying": json.underlying.symbol,
-                    "current": option.mark,
+                    "current": CallOption(json.underlying.mark, option.strikePrice, 0, option.volatility / 100, timeToExpiry(option, new Date())),
                     "low": CallOption(targetLow, option.strikePrice, 0, option.volatility / 100, timeToExpiry(option, targetDate)),
                     "flat": CallOption(json.underlying.mark, option.strikePrice, 0, option.volatility / 100, timeToExpiry(option, targetDate)),
                     "high": CallOption(targetHigh, option.strikePrice, 0, option.volatility / 100, timeToExpiry(option, targetDate)),
@@ -119,8 +130,8 @@ function toContracts_(json, targetDate, targetLow, targetHigh) {
 
 function LinearProgrammingTest() {
     var googChain = getOptionChain("GOOG", new Date(2020, 12, 31), 1000, 1500);
-
-    var result = LinearProgramming(googChain, 350000, -150000, -35000);
+   
+    var result = LinearProgramming(googChain, 350000, -175000, -20000);
     Logger.log(result);
     for (var i in result.positions) {
         Logger.log(contracts[i].name + ": " + result.positions[i]);
