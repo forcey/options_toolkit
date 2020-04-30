@@ -7,6 +7,7 @@
 //   "flat": 100.0,
 //   "high": 300.0,
 //   "multiplier": 100,
+//   "pinned": 200,
 //  },
 //  {...}
 // ]
@@ -27,14 +28,18 @@ function LinearProgramming(contracts, maxCost, maxLoss, maxCarry) {
     var lossConstraint = engine.addConstraint(maxLoss, 0)
     var carryConstraint = engine.addConstraint(maxCarry, 0)
     for (var contract of contracts) {
-        engine.addVariable(contract.name, 0, 1e9, LinearOptimizationService.VariableType.INTEGER);
+        var pinned = "pinned" in contract ? contract.pinned : 0;
+        engine.addVariable(contract.name, pinned, 1e9, LinearOptimizationService.VariableType.INTEGER);
 
-        var multiplier = "multiplier" in contract ? contract.multiplier : 1;
+        var cost = contract.current * contract.multiplier;
+        var loss = (contract.low - contract.current) * contract.multiplier;
+        var flat = (contract.flat - contract.current) * contract.multiplier;
+        var gain = (contract.high - contract.current) * contract.multiplier;
 
-        costConstraint.setCoefficient(contract.name, contract.current * multiplier);
-        lossConstraint.setCoefficient(contract.name, (contract.low - contract.current) * multiplier);
-        carryConstraint.setCoefficient(contract.name, (contract.flat - contract.current) * multiplier);
-        engine.setObjectiveCoefficient(contract.name, (contract.high - contract.current) * multiplier);
+        costConstraint.setCoefficient(contract.name, cost);
+        lossConstraint.setCoefficient(contract.name, loss);
+        carryConstraint.setCoefficient(contract.name, flat);
+        engine.setObjectiveCoefficient(contract.name, gain);
 
         if (!(contract.underlying in underlyingConstraints)) {
             // Each underlying must occupy 5% - 50% of total portfolio.
@@ -42,7 +47,7 @@ function LinearProgramming(contracts, maxCost, maxLoss, maxCarry) {
         }
 
         var underlyingConstraint = underlyingConstraints[contract.underlying];
-        underlyingConstraint.setCoefficient(contract.name, contract.current * multiplier);
+        underlyingConstraint.setCoefficient(contract.name, cost);
     }
 
     // Engine should maximize the objective
@@ -62,14 +67,13 @@ function LinearProgramming(contracts, maxCost, maxLoss, maxCarry) {
         }
         for (var i = 0; i < contracts.length; i++) {
             var contract = contracts[i];
-            var multiplier = "multiplier" in contract ? contract.multiplier : 1;
 
             var value = solution.getVariableValue(contract.name)
             if (value > 0) {
                 result.positions[i] = value;
-                result.cost += value * contract.current * multiplier;
-                result.max_loss += value * (contract.low - contract.current) * multiplier;
-                result.carry_cost += value * (contract.flat - contract.current) * multiplier;
+                result.cost += value * contract.current * contract.multiplier;
+                result.max_loss += value * (contract.low - contract.current) * contract.multiplier;
+                result.carry_cost += value * (contract.flat - contract.current) * contract.multiplier;
             }
         }
         return result;
@@ -98,14 +102,7 @@ function toContracts_(json, targetDate, targetLow, targetHigh) {
         return [];
     }
 
-    var underlying = {
-        "name": json.underlying.symbol,
-        "underlying": json.underlying.symbol,
-        "current": json.underlying.mark,
-        "low": targetLow,
-        "flat": json.underlying.mark,
-        "high": targetHigh,
-    };
+    var underlying = getStock(json.underlying.symbol, json.underlying.mark, targetLow, targetHigh);
     var contracts = [underlying];
 
     var map = json["callExpDateMap"];
@@ -115,11 +112,16 @@ function toContracts_(json, targetDate, targetLow, targetHigh) {
                 var contract = {
                     "name": option.description,
                     "underlying": json.underlying.symbol,
-                    "current": CallOption(json.underlying.mark, option.strikePrice, 0, option.volatility / 100, timeToExpiry(option, new Date())),
+                    //"current": CallOption(json.underlying.mark, option.strikePrice, 0, option.volatility / 100, timeToExpiry(option, new Date())),
+                    "current": option.mark,
                     "low": CallOption(targetLow, option.strikePrice, 0, option.volatility / 100, timeToExpiry(option, targetDate)),
                     "flat": CallOption(json.underlying.mark, option.strikePrice, 0, option.volatility / 100, timeToExpiry(option, targetDate)),
                     "high": CallOption(targetHigh, option.strikePrice, 0, option.volatility / 100, timeToExpiry(option, targetDate)),
                     "multiplier": option.multiplier,
+                    "delta": option.delta,
+                    "strike": option.strikePrice,
+                    "expiry": new Date(option.expirationDate),
+                    "instrument": "Call",
                 }
                 contracts.push(contract);
             }
@@ -128,12 +130,74 @@ function toContracts_(json, targetDate, targetLow, targetHigh) {
     return contracts;
 }
 
+function getStock(symbol, current, low, high) {
+    return {
+        "name": symbol,
+        "underlying": symbol,
+        "current": current,
+        "low": low,
+        "flat": current,
+        "high": high,
+        "delta": 1,
+        "multiplier": 1,
+        "instrument": "Stock",
+    };
+}
+
 function LinearProgrammingTest() {
-    var googChain = getOptionChain("GOOG", new Date(2020, 12, 31), 1000, 1500);
-   
-    var result = LinearProgramming(googChain, 350000, -175000, -20000);
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheet = ss.getSheets()[4];
+
+    var range = sheet.getRange("LinearProgrammingInput");
+    var outputRange = sheet.getRange("LinearProgrammingOutput");
+
+    var outputColumns = [
+        { "title": "Name", "field": "name" },
+        { "title": "Underlying", "field": "underlying" },
+        { "title": "Instrument", "field": "instrument" },
+        { "title": "Strike", "field": "strike" },
+        { "title": "Expiry", "field": "expiry" },
+        { "title": "Multiplier", "field": "multiplier" },
+        { "title": "Position", "field": "position" },
+        { "title": "Current Price", "field": "current" },
+        { "title": "Low Price", "field": "low" },
+        { "title": "Flat Price", "field": "flat" },
+        { "title": "High Price", "field": "high" },
+        { "title": "Delta", "field": "delta" },
+    ];
+    outputRange.clearContent();
+    for (var i = 0; i < outputColumns.length; i++) {
+        outputRange.getCell(1, i + 1).setValue(outputColumns[i].title);
+    }
+
+    var contracts = [];
+    for (var row = 2; row <= range.getHeight(); row++) {
+        var symbol = range.getCell(row, 1).getValue();
+        var current = range.getCell(row, 2).getValue();
+        var targetDate = range.getCell(row, 3).getValue();
+        var low = range.getCell(row, 4).getValue();
+        var high = range.getCell(row, 5).getValue();
+        var options = range.getCell(row, 6).getValue();
+
+        if (options) {
+            var chain = getOptionChain(symbol, targetDate, low, high);
+            contracts.push(...chain);
+        } else {
+            var stock = getStock(symbol, current, low, high);
+            contracts.push(stock);
+        }
+    }
+
+    var result = LinearProgramming(contracts, 340000, -150000, -15000);
     Logger.log(result);
+    var row = 2;
     for (var i in result.positions) {
-        Logger.log(contracts[i].name + ": " + result.positions[i]);
+        contracts[i].position = result.positions[i];
+        Logger.log(contracts[i]);
+
+        for (var column = 0; column < outputColumns.length; column++) {
+            outputRange.getCell(row, column + 1).setValue(contracts[i][outputColumns[column].field]);
+        }
+        row++;
     }
 }
