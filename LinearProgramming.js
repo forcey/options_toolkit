@@ -144,6 +144,12 @@ function getStock(symbol, current, low, high) {
     };
 }
 
+function formatOptionName(instrument, underlying, strike, expiry) {
+    var dateString = expiry.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: "numeric" }).replace(",", "");
+    // TSLA Jun 17 2022 1000 Call
+    return `${underlying} ${dateString} ${strike} ${instrument}`;
+}
+
 function LinearProgrammingTest() {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     var sheet = ss.getSheets()[4];
@@ -170,6 +176,20 @@ function LinearProgrammingTest() {
         outputRange.getCell(1, i + 1).setValue(outputColumns[i].title);
     }
 
+    var pinnedRange = ss.getSheets()[1].getRange("PinnedPositions");
+    var pinnedPositions = {};
+    for (var i = 1; i <= pinnedRange.getHeight(); i++) {
+        var symbol = pinnedRange.getCell(i, 1).getValue();
+        var instrument = pinnedRange.getCell(i, 4).getValue();
+        var strike = pinnedRange.getCell(i, 5).getValue();
+        var expiry = pinnedRange.getCell(i, 6).getValue();
+        var position = pinnedRange.getCell(i, 8).getValue();
+
+        var name = instrument == "Call" ? formatOptionName(instrument, symbol, strike, expiry) : symbol;
+        pinnedPositions[name] = position;
+        Logger.log(`Pinned ${name} x ${position}`);
+    }
+
     var contracts = [];
     for (var row = 2; row <= range.getHeight(); row++) {
         var symbol = range.getCell(row, 1).getValue();
@@ -188,12 +208,26 @@ function LinearProgrammingTest() {
         }
     }
 
+    for (var contract of contracts) {
+        if (contract.name in pinnedPositions) {
+            contract.pinned = pinnedPositions[contract.name];
+        }
+    }
+
     var result = LinearProgramming(contracts, 340000, -150000, -15000);
     Logger.log(result);
+
+    var includePinned = false;
+
     var row = 2;
     for (var i in result.positions) {
         contracts[i].position = result.positions[i];
         Logger.log(contracts[i]);
+
+        if (!includePinned && "pinned" in contracts[i]) {
+            contracts[i].position -= contracts[i].pinned;
+            if (contracts[i].position == 0) continue;
+        }
 
         for (var column = 0; column < outputColumns.length; column++) {
             outputRange.getCell(row, column + 1).setValue(contracts[i][outputColumns[column].field]);
