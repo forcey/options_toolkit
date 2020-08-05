@@ -13,11 +13,23 @@ function GetOptionQuote(underlying, optionType, strike, date, properties) {
     json => parseOptionChain_(json, properties.flat()));
 }
 
+function GetQuote(symbol) {
+  const url = `https://api.tdameritrade.com/v1/marketdata/${symbol}/quotes`;
+  Logger.log(url);
+  return ImportJSONOAuth(url, parseQuote);
+}
+
 function createURL(path, params) {
   const ret = [];
   for (let key in params)
     ret.push(encodeURIComponent(key) + '=' + encodeURIComponent(params[key]));
   return path + '?' + ret.join('&');
+}
+
+function parseQuote(json) {
+  for (var symbol in json) {
+    return json[symbol]["mark"];
+  }
 }
 
 function parseOptionChain_(json, properties) {
